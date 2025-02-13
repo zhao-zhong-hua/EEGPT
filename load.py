@@ -44,7 +44,7 @@ def inspect_edf_mne(file_path):
 
 
 # 使用示例:
-file_path = "/data1/wangkuiyu/preprocess_code/EEGPT/pretrain_set_10bands/TrainFolder/0/eeg_41win_0.edf"
+file_path = "/data1/wangkuiyu/preprocess_code/EEGPT/pretrain_set_10bands/TrainFolder/0/eeg_45win_0.edf"
 
 try:
     # 先尝试作为tensor加载

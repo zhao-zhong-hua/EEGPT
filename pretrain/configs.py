@@ -22,22 +22,22 @@ def load_fn(x):
 
 max_epochs = 200
 max_lr = 5e-4
-batch_size=64
-devices=[0]
+batch_size=256
+devices=[6,7]
 
 
 
 # train_dataset = torchvision.datasets.DatasetFolder(root="../datasets/pretrain/merged/TrainFolder/", loader=load_fn,  extensions=['.edf'])
 # valid_dataset = torchvision.datasets.DatasetFolder(root="../datasets/pretrain/merged/ValidFolder/", loader=load_fn, extensions=['.edf'])
-train_dataset = torchvision.datasets.DatasetFolder(root="/data1/wangkuiyu/preprocess_code/EEGPT/pretrain_set_10bands/TrainFolder/", loader=load_fn,  extensions=['.edf'])
-valid_dataset = torchvision.datasets.DatasetFolder(root="/data1/wangkuiyu/preprocess_code/EEGPT/pretrain_set_10bands/ValidFolder/", loader=load_fn, extensions=['.edf'])
+train_dataset = torchvision.datasets.DatasetFolder(root="/data1/wangkuiyu/preprocess_code/EEGPT/EEGPT_pretrain_set_origin/TrainFolder", loader=load_fn,  extensions=['.edf'])
+valid_dataset = torchvision.datasets.DatasetFolder(root="/data1/wangkuiyu/preprocess_code/EEGPT/EEGPT_pretrain_set_origin/ValidFolder", loader=load_fn, extensions=['.edf'])
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, num_workers=0, shuffle=True)
 valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=batch_size, num_workers=0, shuffle=False)
 
 
 steps_per_epoch = math.ceil(len(train_loader)/len(devices))
 
-tag = "tiny1"
+tag = "little"
 variant = "D"
 
 MODELS_CONFIGS = {

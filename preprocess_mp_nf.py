@@ -132,7 +132,24 @@ class Subject_data():
         #
         #     return de_features  # 返回DE特征数组
         # process_and_save_eeg
-        def sliding_window_extract_de(self,save_folder, total_id):
+        def sliding_window_extract_de(self,save_folder, total_id,train_ids, valid_ids):
+
+            # 确定当前ID属于哪个数据集
+            if str(total_id) in train_ids:
+                dataset_type = "train"
+            elif str(total_id) in valid_ids:
+                dataset_type = "valid"
+            else:
+                print(f"警告: ID {total_id} 既不在训练集也不在验证集中")
+
+                unclassified_txt_path = "unclassified/unclassified_txt"
+                # 确保目标文件夹存在
+                os.makedirs(os.path.dirname(unclassified_txt_path), exist_ok=True)
+                # 将未分类ID追加到txt文件中
+                with open(unclassified_txt_path, 'a') as f:
+                    f.write(f"{str(total_id)}\n")
+
+                return 0
 
             # 获取原始数据
             eeg_data_array = np.array([self.eeg_data[chn] for chn in self.eeg_channels if
@@ -146,6 +163,14 @@ class Subject_data():
             #重采样到256hz
             orig_fs = self.fs  # 原始采样率
             target_fs = 256  # 目标采样率
+
+            # 计算数据时长(秒)
+            data_duration = eeg_data_array.shape[1] / self.fs
+
+            # 如果数据长度小于4秒，则跳过处理
+            if data_duration < 4.1:
+                print(f"数据时长({data_duration:.2f}秒)小于4秒，跳过处理")
+                return 0
 
             if orig_fs != target_fs:
                 n_samples = int(eeg_data_array.shape[1] * (target_fs / orig_fs))
@@ -181,22 +206,40 @@ class Subject_data():
                       'PO7', 'PO3', 'POZ',  'PO4', 'PO8',
                                'O1', 'OZ', 'O2', ]
 
-            # # 添加通道统计变量
+            # # # 添加通道统计变量
             # existing_channels = []
             # missing_channels = []
-            # # 在填充数据之前，先统计通道匹配情况
+            # extra_channels = []  # 多余的通道
+            #
+            # # 将原始通道名转换为大写以进行比较
+            # raw_channels_upper = [ch.upper() for ch in raw_channels]
+            #
+            # # 统计匹配和缺失的通道
             # for standard_ch in standard_channels:
-            #     if standard_ch in [ch.upper() for ch in raw_channels]:
+            #     if standard_ch in raw_channels_upper:
             #         existing_channels.append(standard_ch)
             #     else:
             #         missing_channels.append(standard_ch)
-            # print(f"\n通道统计:")
+            #
+            # # 统计多余的通道
+            # for raw_ch in raw_channels:
+            #     if raw_ch.upper() not in standard_channels:
+            #         extra_channels.append(raw_ch)
+            #
+            # print(f"\n=== 通道统计 ===")
             # print(f"原始数据通道数: {len(raw_channels)}")
             # print(f"标准通道数: {len(standard_channels)}")
             # print(f"匹配到的通道数: {len(existing_channels)}")
             # print(f"缺失的通道数: {len(missing_channels)}")
-            # print("\n现存的通道:", existing_channels)
-            # print("\n缺失的通道:", missing_channels)
+            # print(f"多余的通道数: {len(extra_channels)}")
+            #
+            # print("\n--- 详细通道信息 ---")
+            # print("现存的通道 ({}):\n{}".format(len(existing_channels),
+            #                                     ', '.join(existing_channels)))
+            # print("\n缺失的通道 ({}):\n{}".format(len(missing_channels),
+            #                                       ', '.join(missing_channels)))
+            # print("\n多余的通道 ({}):\n{}".format(len(extra_channels),
+            #                                       ', '.join(extra_channels)))
 
 
             for win_idx in range(n_windows):
@@ -217,11 +260,11 @@ class Subject_data():
                 # 转换为tensor
                 tensor_data = torch.from_numpy(aligned_data).float()
 
-                # 随机分配到训练集或验证集
-                if np.random.random() < 0.1:
-                    save_dir = os.path.join(save_folder, "ValidFolder/0/")
-                else:
+                # 根据ID确定保存路径
+                if dataset_type == "train":
                     save_dir = os.path.join(save_folder, "TrainFolder/0/")
+                else:
+                    save_dir = os.path.join(save_folder, "ValidFolder/0/")
 
                 os.makedirs(save_dir, exist_ok=True)
 
@@ -743,7 +786,7 @@ def set_affinity(process_id, num_cores):
     p.cpu_affinity([core_id])  # Set the process to only run on the assigned core
 
 
-def process_subject(file_path, save_folder, check_pickle=False):
+def process_subject(file_path, save_folder,train_ids,valid_ids, check_pickle=False):
     total_id = int(file_path.split('/')[-1].replace('sub_', ''))
     set_affinity(total_id, 128)
 
@@ -806,7 +849,7 @@ def process_subject(file_path, save_folder, check_pickle=False):
               'total id', subject.subject_total_id,
               'subject id', subject.subject_id_dataset)
         if subject.eeg is not None:
-            subject.eeg.sliding_window_extract_de(save_folder, total_id)
+            subject.eeg.sliding_window_extract_de(save_folder, total_id,train_ids, valid_ids)
 
         #     raise NotImplementedError
         
@@ -847,6 +890,40 @@ def process_subject(file_path, save_folder, check_pickle=False):
             logging.warning(f"Path does not exist: {path_to_remove}")
 
 
+def get_dataset_ids(train_folder_path, valid_folder_path):
+    """
+    从两个父文件夹中读取子文件夹名作为训练集和验证集的ID列表
+
+    Parameters:
+        train_folder_path: 训练集父文件夹路径
+        valid_folder_path: 验证集父文件夹路径
+
+    Returns:
+        train_ids: 训练集ID列表
+        valid_ids: 验证集ID列表
+    """
+    # 获取训练集文件夹中的子文件夹名
+    train_ids = [str(folder) for folder in os.listdir(train_folder_path)
+                 if os.path.isdir(os.path.join(train_folder_path, folder))]
+
+    # 获取验证集文件夹中的子文件夹名
+    valid_ids = [str(folder) for folder in os.listdir(valid_folder_path)
+                 if os.path.isdir(os.path.join(valid_folder_path, folder))]
+
+    # 检查是否有重复的ID
+    duplicate_ids = set(train_ids) & set(valid_ids)
+    if duplicate_ids:
+        print(f"警告: 在训练集和验证集中发现重复的ID: {duplicate_ids}")
+
+    # 打印统计信息
+    print("\n=== 数据集划分统计 ===")
+    print(f"训练集样本数: {len(train_ids)}")
+    print(f"验证集样本数: {len(valid_ids)}")
+    print(f"总样本数: {len(train_ids) + len(valid_ids)}")
+
+    return train_ids, valid_ids
+
+
 if __name__ == '__main__':
     setup_logger()
     # Pretrain Data ===================================================
@@ -854,51 +931,61 @@ if __name__ == '__main__':
     # Data processing for the directories to be preprocessed
     data_folders = [
         '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/SEED',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/LEMON',
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/HBN_1',
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/HUAWEI_EEG',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/SLEEP/HMSP_PROCESSED/HMSP_data',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_abnormal/train/abnormal',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_abnormal/train/normal',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_events/eval',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_events/train',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_epilepsy/00_epilepsy',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_epilepsy/01_no_epilepsy',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_slowing',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/SXMU_1_PROCESSED/HC',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/SXMU_1_PROCESSED/MDD',
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/fNIRS/COMPETE_PROCESSED',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG_fNIRS/ZD_fusion_1',
-        #
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/CSA-PD-W',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/E-CAM-S',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/TBI_01',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/TBI_02',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/TBI_03',
-        #
-        # # 新加入到预训练的数据
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/AD_FD_HC_PROCESSED',  sft
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/PREDICT/PREDICT-mTBI_Rest',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/PREDICT/PREDICT-OCD_Flanker',
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/Porn-addiction',  sft
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/PD_Gait',
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/First_Episode_Psychosis_Control_1', sft
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/First_Episode_Psychosis_Control_2', sft
-        # # '/home/wangkuiyu/data1/LEM/new_data_pool/QDHSM',  sft
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/One_person_microstate/',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/52_Resting/',
-        # '/home/wangkuiyu/data1/LEM/new_data_pool/51_FACED/',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/LEMON',
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/HBN_1',
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/HUAWEI_EEG',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/SLEEP/HMSP_PROCESSED/HMSP_data',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_abnormal/train/abnormal',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_abnormal/train/normal',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_events/eval',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_events/train',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_epilepsy/00_epilepsy',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_epilepsy/01_no_epilepsy',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/TUHEEG_PROCESSED/tuh_eeg_slowing',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/SXMU_1_PROCESSED/HC',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/SXMU_1_PROCESSED/MDD',
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/fNIRS/COMPETE_PROCESSED',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG_fNIRS/ZD_fusion_1',
+
+        '/home/wangkuiyu/data1/LEM/new_data_pool/CSA-PD-W',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/E-CAM-S',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/TBI_01',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/TBI_02',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/TBI_03',
+
+        # 新加入到预训练的数据
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/AD_FD_HC_PROCESSED',  sft
+        '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/PREDICT/PREDICT-mTBI_Rest',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/PREDICT/PREDICT-OCD_Flanker',
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/Porn-addiction',  sft
+        '/home/wangkuiyu/data1/LEM/new_data_pool/SFT/PD_Gait',
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/First_Episode_Psychosis_Control_1', sft
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/First_Episode_Psychosis_Control_2', sft
+        # '/home/wangkuiyu/data1/LEM/new_data_pool/QDHSM',  sft
+        '/home/wangkuiyu/data1/LEM/new_data_pool/One_person_microstate/',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/EEG/52_Resting/',
+        '/home/wangkuiyu/data1/LEM/new_data_pool/51_FACED/',
 
     ]
 
+    # 设置父文件夹路径
+    train_folder = "/data1/wangkuiyu/LEM/MultiModel/pretrain_set_with_origin_train/"
+    valid_folder = "/data1/wangkuiyu/LEM/MultiModel/pretrain_set_with_origin_val/"
     # file_paths = []
+    # 获取训练集和验证集ID
+    train_ids, valid_ids = get_dataset_ids(train_folder, valid_folder)
+
+
     for data_folder in data_folders:
         file_paths = [os.path.join(data_folder, f) for f in os.listdir(data_folder) if f.startswith('sub_')]
-    
+
         # Use a partial function to include save_folder during processing
-        process_subject_partial = partial(process_subject, save_folder='./pretrain_set_10bands', check_pickle=True)
-        with Pool(processes=32) as pool:
+        process_subject_partial = partial(process_subject, save_folder='./EEGPT_pretrain_set_origin_114', check_pickle=True,train_ids=train_ids, valid_ids=valid_ids)
+        with Pool(processes=16) as pool:
             pool.map(process_subject_partial, file_paths)
+
+    # file_path = "/data1/wangkuiyu/LEM/new_data_pool/EEG/52_Resting/52_Resting-state/sub_025001"
+    # process_subject(file_path=file_path,save_folder='./pretrain_set_10bands',check_pickle=True,train_ids=train_ids, valid_ids=valid_ids)
 
     # # Downstream for test.py dataset processing (directories marked as "leave for downstream")
     # downstream_data_folders = [
