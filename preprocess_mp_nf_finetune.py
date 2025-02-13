@@ -207,20 +207,21 @@ class Subject_data():
                       'PO7', 'PO3', 'POZ',  'PO4', 'PO8',
                                'O1', 'OZ', 'O2', ]
 
-            # # # 添加通道统计变量
-            # existing_channels = []
-            # missing_channels = []
-            # extra_channels = []  # 多余的通道
-            #
-            # # 将原始通道名转换为大写以进行比较
-            # raw_channels_upper = [ch.upper() for ch in raw_channels]
-            #
-            # # 统计匹配和缺失的通道
-            # for standard_ch in standard_channels:
-            #     if standard_ch in raw_channels_upper:
-            #         existing_channels.append(standard_ch)
-            #     else:
-            #         missing_channels.append(standard_ch)
+            # # 添加通道统计变量
+            existing_channels = []
+            missing_channels = []
+            extra_channels = []  # 多余的通道
+
+            # 将原始通道名转换为大写以进行比较
+            raw_channels_upper = [ch.upper() for ch in raw_channels]
+
+            # 统计匹配和缺失的通道
+            for standard_ch in standard_channels:
+                if standard_ch in raw_channels_upper:
+                    existing_channels.append(standard_ch)
+                else:
+                    missing_channels.append(standard_ch)
+
             # # 统计多余的通道
             # for raw_ch in raw_channels:
             #     if raw_ch.upper() not in standard_channels:
@@ -822,7 +823,7 @@ def process_subject(file_path, save_folder,train_ids,valid_ids, check_pickle=Fal
                                                                subject.eeg)
             # subject.eeg.extract_de_features = MethodType(Subject_data.EEG_data.extract_de_features, subject.eeg)
             # subject.eeg.filter = MethodType(Subject_data.EEG_data.filter, subject.eeg)
-            subject.eeg.window_size = 4  #修改window_size的时候在这里改
+            subject.eeg.window_size = 10  #修改window_size的时候在这里改
             subject.eeg.fs = subject.preprocess.eeg_freq
             subject.eeg.de_window_size = 1  # fixme: tunable
             subject.eeg.eeg_chn_locs = eeg_locs  # todo: copy from Preprocess
